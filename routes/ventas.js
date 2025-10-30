@@ -62,4 +62,57 @@ router.post("/", async (req, res) => {
   }
 });
 
+router.get("/", async (req, res) => {
+  try {
+    const db = await connectDB();
+    const ventas = db.collection("ventas");
+    const productos = db.collection("productos");
+
+    const { desde, hasta, q } = req.query;
+    const filtro = {};
+
+    // 🔸 Filtro por rango de fechas
+    if (desde || hasta) {
+      filtro.fecha = {};
+      if (desde) filtro.fecha.$gte = new Date(desde).toISOString();
+      if (hasta) filtro.fecha.$lte = new Date(hasta).toISOString();
+    }
+
+    // 🔸 Filtro por texto (cliente o notas)
+    if (q) {
+      filtro.$or = [
+        { cliente: { $regex: q, $options: "i" } },
+        { notas: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    const lista = await ventas.find(filtro).sort({ fecha: -1 }).toArray();
+
+    // 🔸 Mapear nombres de productos
+    const productosMap = {};
+    const prods = await productos.find().toArray();
+    prods.forEach((p) => (productosMap[p._id.toString()] = p.nombre));
+
+    const ventasConNombre = lista.map((v) => ({
+      _id: v._id,
+      producto_id: v.producto_id,
+      producto_nombre: productosMap[v.producto_id?.toString()] ?? "Desconocido",
+      fecha: v.fecha,
+      cantidad: v.cantidad,
+      precio_unitario: v.precio_unitario,
+      total: v.total,
+      costo_unitario: v.costo_unitario,
+      ganancia: v.ganancia,
+      cliente: v.cliente ?? "",
+      notas: v.notas ?? "",
+    }));
+
+    res.json(ventasConNombre);
+  } catch (error) {
+    console.error("Error en GET /api/ventas:", error);
+    res.status(500).json({ error: "Error al obtener ventas", detalle: error.message });
+  }
+});
+
+
 export default router;
